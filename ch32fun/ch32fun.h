@@ -77,11 +77,12 @@
 #define FUNCONF_SYSTICK_USE_HCLK 0      // Should systick be at 48 MHz (1) or 6MHz (0) on an '003.  Typically set to 0 to divide HCLK by 8.
 #define FUNCONF_TINYVECTOR 0            // If enabled, Does not allow normal interrupts.
 #define FUNCONF_UART_PRINTF_BAUD 115200 // Only used if FUNCONF_USE_UARTPRINTF is set.
-#define FUNCONF_DEBUGPRINTF_TIMEOUT 0x80000 // Arbitrary time units, this is around 120ms.
+#define FUNCONF_DEBUGPRINTF_TIMEOUT 0x100000 // Arbitrary time units, this is around 200ms.
 #define FUNCONF_ENABLE_HPE 1            // Enable hardware interrupt stack.  Very good on QingKeV4, i.e. x035, v10x, v20x, v30x, but questionable on 003. 
                                         // If you are using that, consider using INTERRUPT_DECORATOR as an attribute to your interrupt handlers.
 #define FUNCONF_USE_5V_VDD 0            // Enable this if you plan to use your part at 5V - affects USB and PD configration on the x035.
 #define FUNCONF_DEBUG_HARDFAULT    1    // Log fatal errors with "printf"
+#define FUNCONF_ISR_IN_RAM 0            // Put the interrupt vector in RAM.
 */
 
 // Sanity check for when porting old code.
@@ -100,7 +101,7 @@
 #endif
 
 #if defined(FUNCONF_USE_DEBUGPRINTF) && FUNCONF_USE_DEBUGPRINTF && !defined(FUNCONF_DEBUGPRINTF_TIMEOUT)
-	#define FUNCONF_DEBUGPRINTF_TIMEOUT 0x80000
+	#define FUNCONF_DEBUGPRINTF_TIMEOUT 0x100000
 #endif
 
 #if defined(FUNCONF_USE_HSI) && defined(FUNCONF_USE_HSE) && FUNCONF_USE_HSI && FUNCONF_USE_HSE
@@ -164,7 +165,7 @@
 		#endif
 	#elif defined(CH32V30x)
 		#define HSE_VALUE				  (8000000)
-	#elif defined(CH59x)
+	#elif defined(CH57x) || defined(CH58x) || defined(CH59x)
 		#define HSE_VALUE				  (32000000)
 	#endif
 #endif
@@ -209,15 +210,19 @@
 #endif
 
 #ifndef FUNCONF_SYSTEM_CORE_CLOCK
-	#if defined(CH59x) // no PLL multiplier, but a divider from the 480 MHz clock
+	#if defined(CH57x) || defined(CH58x) || defined(CH59x) // no PLL multiplier, but a divider from the 480 MHz clock
 		#define FUNCONF_SYSTEM_CORE_CLOCK 60000000 // default in ch32fun.c using CLK_SOURCE_PLL_60MHz
-		#if defined(CLK_SOURCE_CH59X)
-			#error Must define FUNCONF_SYSTEM_CORE_CLOCK too if CLK_SOURCE_CH59X is defined
+		#if defined(CLK_SOURCE_CH5XX)
+			#error Must define FUNCONF_SYSTEM_CORE_CLOCK too if CLK_SOURCE_CH5XX is defined
 		#endif
 	#elif defined(FUNCONF_USE_HSI) && FUNCONF_USE_HSI
 		#define FUNCONF_SYSTEM_CORE_CLOCK ((HSI_VALUE)*(FUNCONF_PLL_MULTIPLIER))
 	#elif defined(FUNCONF_USE_HSE) && FUNCONF_USE_HSE
-		#define FUNCONF_SYSTEM_CORE_CLOCK ((HSE_VALUE)*(FUNCONF_PLL_MULTIPLIER))
+		#if defined(CH32V20x_D8) || defined(CH32V20x_D8W)
+			#define FUNCONF_SYSTEM_CORE_CLOCK ((HSE_VALUE/4)*(FUNCONF_PLL_MULTIPLIER))
+		#else
+			#define FUNCONF_SYSTEM_CORE_CLOCK ((HSE_VALUE)*(FUNCONF_PLL_MULTIPLIER))
+		#endif
 	#else
 		#error Must define either FUNCONF_USE_HSI or FUNCONF_USE_HSE to be 1.
 	#endif
@@ -225,6 +230,10 @@
 
 #ifndef FUNCONF_USE_5V_VDD
 	#define FUNCONF_USE_5V_VDD 0
+#endif
+
+#ifndef FUNCONF_ISR_IN_RAM
+	#define FUNCONF_ISR_IN_RAM 0
 #endif
 
 // Default package for CH32V20x
@@ -346,7 +355,17 @@ typedef enum {DISABLE = 0, ENABLE = !DISABLE} FunctionalState;
 typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 
 #define   RV_STATIC_INLINE  static  inline
-#endif // __ASSEMBLER__
+
+#include <string.h> // for memcpy in ch5xx hw.h files
+#endif // ifndef __ASSEMBLER__
+
+#if FUNCONF_ISR_IN_RAM
+	#define VECTOR_HANDLER_SECTION ".data.vector_handler"
+	#define ISR_HANDLER_INITIAL_JUMP ".word 0x00000000\n"
+#else
+	#define VECTOR_HANDLER_SECTION ".text.vector_handler"
+	#define ISR_HANDLER_INITIAL_JUMP "j handle_reset\n"
+#endif
 
 #ifdef CH32V003
 	#include "ch32v003hw.h"
@@ -362,8 +381,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 	#include "ch32v20xhw.h"
 #elif defined( CH32V30x )
 	#include "ch32v30xhw.h"
-#elif defined( CH59x )
-	#include "ch59xhw.h"
+#elif defined( CH57x ) || defined( CH58x ) || defined( CH59x )
+	#include "ch5xxhw.h"
 #endif
 
 #if defined(__riscv) || defined(__riscv__) || defined( CH32V003FUN_BASE )
@@ -371,7 +390,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #if __GNUC__ > 10
 	#define ADD_ARCH_ZICSR ".option arch, +zicsr\n"
 #else
-	#define ADD_ARCH_ZICSR 
+	#define ADD_ARCH_ZICSR
 #endif
 
 #ifndef __ASSEMBLER__
@@ -835,14 +854,20 @@ extern "C" {
 
 #define FUN_HIGH 0x1
 #define FUN_LOW 0x0
-#if defined(CH59x)
+#if defined(CH57x) || defined(CH58x) || defined(CH59x)
+#if defined( PB ) && defined( R32_PB_PIN )
 #define OFFSET_FOR_GPIOB(pin)         (((pin & PB) >> 31) * (&R32_PB_PIN - &R32_PA_PIN)) // 0 if GPIOA, 0x20 if GPIOB
+#else
+#define PB                            0
+#define OFFSET_FOR_GPIOB(pin)         0
+#endif
 #define GPIO_ResetBits(pin)           (*(&R32_PA_CLR + OFFSET_FOR_GPIOB(pin)) |= (pin & ~PB))
 #define GPIO_SetBits(pin)             (*(&R32_PA_OUT + OFFSET_FOR_GPIOB(pin)) |= (pin & ~PB))
 #define GPIO_InverseBits(pin)         (*(&R32_PA_OUT + OFFSET_FOR_GPIOB(pin)) ^= (pin & ~PB))
 #define GPIO_ReadPortPin(pin)         (*(&R32_PA_PIN + OFFSET_FOR_GPIOB(pin)) &  (pin & ~PB))
 #define funDigitalRead(pin)           GPIO_ReadPortPin(pin)
 #define funDigitalWrite( pin, value ) { if((value)==FUN_HIGH){GPIO_SetBits(pin);} else if((value)==FUN_LOW){GPIO_ResetBits(pin);} }
+#define funGpioInitAll()              // funGpioInitAll() does not do anything on ch5xx, put here for consistency
 
 RV_STATIC_INLINE void funPinMode(u32 pin, GPIOModeTypeDef mode)
 {
@@ -931,10 +956,10 @@ void funAnalogInit( void );
 int funAnalogRead( int nAnalogNumber );
 
 void handle_reset()            __attribute__((naked)) __attribute((section(".text.handle_reset"))) __attribute__((used));
-void DefaultIRQHandler( void ) __attribute__((section(".text.vector_handler"))) __attribute__((naked)) __attribute__((used));
+void DefaultIRQHandler( void ) __attribute__((section(VECTOR_HANDLER_SECTION))) __attribute__((naked)) __attribute__((used));
 // used to clear the CSS flag in case of clock fail switch
 #if defined(FUNCONF_USE_CLK_SEC) && FUNCONF_USE_CLK_SEC
-	void NMI_RCC_CSS_IRQHandler( void ) __attribute__((section(".text.vector_handler"))) __attribute__((naked)) __attribute__((used));
+	void NMI_RCC_CSS_IRQHandler( void ) __attribute__((section(VECTOR_HANDLER_SECTION))) __attribute__((naked)) __attribute__((used));
 #endif
 
 void DelaySysTick( uint32_t n );
@@ -957,7 +982,11 @@ static inline void Delay_Tiny( int n ) {
 #endif //defined(__riscv) || defined(__riscv__) || defined( CH32V003FUN_BASE )
 
 // Tricky: We need to make sure main and SystemInit() are preserved.
+#ifdef MINICHLINK
+int main( int argc, char ** argv) __attribute__((used));
+#else
 int main() __attribute__((used));
+#endif
 void SystemInit(void);
 
 #ifdef FUNCONF_UART_PRINTF_BAUD

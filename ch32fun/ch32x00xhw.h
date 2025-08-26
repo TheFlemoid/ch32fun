@@ -615,6 +615,18 @@ typedef struct
 
 
 
+/* Operational Amplifier and Comparator */
+typedef struct
+{
+    __IO uint32_t CFGR1;
+    __IO uint32_t CTLR1;
+    __IO uint32_t CFGR2;
+    __IO uint32_t CTLR2;
+    __IO uint32_t OPA_KEY;
+    __IO uint32_t CMP_KEY;
+    __IO uint32_t POLL_KEY;
+} OPA_TypeDef;
+
 
 
 
@@ -669,6 +681,7 @@ typedef struct
 
 #define FLASH_R_BASE                            (AHBPERIPH_BASE + 0x2000) /* Flash registers base address */
 
+#define OPA_BASE                                (AHBPERIPH_BASE + 0x4000) 
 
 #define OB_BASE                                 ((uint32_t)0x1FFFF800)    /* Flash Option Bytes base address */
 #define ESIG_BASE                               ((uint32_t)0x1FFFF7E0)
@@ -690,6 +703,7 @@ typedef struct
 #define AFIO                                    ((AFIO_TypeDef *)AFIO_BASE)
 #define EXTI                                    ((EXTI_TypeDef *)EXTI_BASE)
 #define GPIOA                                   ((GPIO_TypeDef *)GPIOA_BASE)
+#define GPIOB                                   ((GPIO_TypeDef *)GPIOB_BASE)
 #define GPIOC                                   ((GPIO_TypeDef *)GPIOC_BASE)
 #define GPIOD                                   ((GPIO_TypeDef *)GPIOD_BASE)
 #define ADC1                                    ((ADC_TypeDef *)ADC1_BASE)
@@ -708,6 +722,7 @@ typedef struct
 #define DMA1_Channel7                           ((DMA_Channel_TypeDef *)DMA1_Channel7_BASE)
 #define RCC                                     ((RCC_TypeDef *)RCC_BASE)
 #define FLASH                                   ((FLASH_TypeDef *)FLASH_R_BASE)
+#define OPA                                     ((OPA_TypeDef *)OPA_BASE)
 #define OB                                      ((OB_TypeDef *)OB_BASE)
 #define ESIG                                    ((ESIG_TypeDef *)ESIG_BASE)
 // Mentioned in ch32v30x_dbgmcu.c, may not work on all processors.
@@ -2814,6 +2829,133 @@ typedef struct
 #define EXTEN_LDOTRIM                           ((uint32_t)0x00000400) /* Core voltage modes */
 #define EXTEN_TIM2_DMA_REMAP                    ((uint32_t)0x00010000) /* DMA alternate of TIM2 */
 
+/******************************************************************************/
+/*                    Operational Amplifier and Comparator                    */
+/******************************************************************************/
+
+/********************  Bit definition for OPA_CFGR1 register  ********************/
+#define OPA_CFGR1_POLL_EN                       ((uint32_t)0x00000001) /*  */
+#define OPA_CFGR1_POLL1_NUM                     ((uint32_t)0x0000000C) /*  */
+#define OPA_CFGR1_POLL1_NUM_0                   ((uint32_t)0x00000004) /*  */
+#define OPA_CFGR1_POLL1_NUM_1                   ((uint32_t)0x00000008) /*  */
+#define OPA_CFGR1_RST_EN1                       ((uint32_t)0x00000010) /*  */
+#define OPA_CFGR1_SETUP_CFG                     ((uint32_t)0x00000060) /*  */
+#define OPA_CFGR1_SETUP_CFG_0                   ((uint32_t)0x00000020) /*  */
+#define OPA_CFGR1_SETUP_CFG_1                   ((uint32_t)0x00000040) /*  */
+#define OPA_CFGR1_AUTO_ADC_CFG                  ((uint32_t)0x00000080) /*  */
+#define OPA_CFGR1_IE_OUT1                       ((uint32_t)0x00000100) /*  */
+#define OPA_CFGR1_NMI_EN                        ((uint32_t)0x00000400) /*  */
+#define OPA_CFGR1_IF_OUT_POLL_CH1               ((uint32_t)0x00001000) /*  */
+#define OPA_CFGR1_IF_OUT_POLL_CH2               ((uint32_t)0x00002000) /*  */
+#define OPA_CFGR1_IF_OUT_POLL_CH3               ((uint32_t)0x00004000) /*  */
+#define OPA_CFGR1_POLL_CH1                      ((uint32_t)0x00030000) /*  */
+#define OPA_CFGR1_POLL_CH1_0                    ((uint32_t)0x00010000) /*  */
+#define OPA_CFGR1_POLL_CH1_1                    ((uint32_t)0x00020000) /*  */
+#define OPA_CFGR1_POLL_CH2                      ((uint32_t)0x000C0000) /*  */
+#define OPA_CFGR1_POLL_CH2_0                    ((uint32_t)0x00040000) /*  */
+#define OPA_CFGR1_POLL_CH2_1                    ((uint32_t)0x00080000) /*  */
+#define OPA_CFGR1_POLL_CH3                      ((uint32_t)0x00300000) /*  */
+#define OPA_CFGR1_POLL_CH3_0                    ((uint32_t)0x00100000) /*  */
+#define OPA_CFGR1_POLL_CH3_1                    ((uint32_t)0x00200000) /*  */
+#define OPA_CFGR1_POLL_SWSTRT                   ((uint32_t)0x01000000) /*  */
+#define OPA_CFGR1_POLL_SEL                      ((uint32_t)0x0E000000) /*  */
+#define OPA_CFGR1_POLL_SEL_1                    ((uint32_t)0x02000000) /*  */
+#define OPA_CFGR1_POLL_SEL_2                    ((uint32_t)0x04000000) /*  */
+#define OPA_CFGR1_POLL_SEL_3                    ((uint32_t)0x08000000) /*  */
+#define OPA_CFGR1_POLL_LOCK                     ((uint32_t)0x80000000) /*  */
+
+/*******************  Bit definition for OPA_CTLR1 register  ********************/
+#define OPA_CTLR1_OPA_EN1                       ((uint32_t)0x00000001) /*  */
+#define OPA_CTLR1_MODE1                         ((uint32_t)0x00000006) /*  */
+#define OPA_CTLR1_MODE1_0                       ((uint32_t)0x00000002) /*  */
+#define OPA_CTLR1_MODE1_1                       ((uint32_t)0x00000004) /*  */
+#define OPA_CTLR1_PSEL1                         ((uint32_t)0x00000030) /*  */
+#define OPA_CTLR1_PSEL1_0                       ((uint32_t)0x00000010) /*  */
+#define OPA_CTLR1_PSEL1_1                       ((uint32_t)0x00000020) /*  */
+#define OPA_CTLR1_PSEL1_CHP0                    ((uint32_t)0x00000000) /*  */
+#define OPA_CTLR1_PSEL1_CHP1                    ((uint32_t)0x00000010) /*  */
+#define OPA_CTLR1_PSEL1_CHP2                    ((uint32_t)0x00000020) /*  */
+#define OPA_CTLR1_PSEL1_CHP3                    ((uint32_t)0x00000030) /*  */
+#define OPA_CTLR1_NSEL1                         ((uint32_t)0x00000700) /*  */
+#define OPA_CTLR1_NSEL1_0                       ((uint32_t)0x00000100) /*  */
+#define OPA_CTLR1_NSEL1_1                       ((uint32_t)0x00000200) /*  */
+#define OPA_CTLR1_NSEL1_2                       ((uint32_t)0x00000400) /*  */
+#define OPA_CTLR1_NSEL1_CHN0                    ((uint32_t)0x00000000) /*  */
+#define OPA_CTLR1_NSEL1_CHN1                    ((uint32_t)0x00000100) /*  */
+#define OPA_CTLR1_NSEL1_PGA4                    ((uint32_t)0x00000300) /*  */
+#define OPA_CTLR1_NSEL1_PGA8                    ((uint32_t)0x00000400) /*  */
+#define OPA_CTLR1_NSEL1_PGA16                   ((uint32_t)0x00000500) /*  */
+#define OPA_CTLR1_NSEL1_PGA32                   ((uint32_t)0x00000600) /*  */
+#define OPA_CTLR1_FB_EN1                        ((uint32_t)0x00000800) /*  */
+#define OPA_CTLR1_PGADIF                        ((uint32_t)0x00001000) /*  */
+#define OPA_CTLR1_VBEN                          ((uint32_t)0x00010000) /*  */
+#define OPA_CTLR1_VBSEL                         ((uint32_t)0x00020000) /*  */
+#define OPA_CTLR1_VBCMPSEL                      ((uint32_t)0x000C0000) /*  */
+#define OPA_CTLR1_VBCMPSEL_0                    ((uint32_t)0x00040000) /*  */
+#define OPA_CTLR1_VBCMPSEL_1                    ((uint32_t)0x00080000) /*  */
+#define OPA_CTLR1_OPA_HS1                       ((uint32_t)0x00100000) /*  */
+#define OPA_CTLR1_OPA_LOCK                      ((uint32_t)0x80000000) /*  */
+
+/********************  Bit definition for OPA_CFGR2 register  ********************/
+#define OPA_CFGR2_POLL_EN1                      ((uint32_t)0x00000001) /*  */
+#define OPA_CFGR2_POLL1_NUM                     ((uint32_t)0x0000000C) /*  */
+#define OPA_CFGR2_POLL1_NUM_0                   ((uint32_t)0x00000004) /*  */
+#define OPA_CFGR2_POLL1_NUM_1                   ((uint32_t)0x00000008) /*  */
+#define OPA_CFGR2_RST_EN1                       ((uint32_t)0x00000010) /*  */
+#define OPA_CFGR2_RST_EN2                       ((uint32_t)0x00000020) /*  */
+#define OPA_CFGR2_IE_OUT1                       ((uint32_t)0x00000100) /*  */
+#define OPA_CFGR2_IE_CNT                        ((uint32_t)0x00000200) /*  */
+#define OPA_CFGR2_IF_OUT_POLL_CH1               ((uint32_t)0x00001000) /*  */
+#define OPA_CFGR2_IF_OUT_POLL_CH2               ((uint32_t)0x00002000) /*  */
+#define OPA_CFGR2_IF_OUT_POLL_CH3               ((uint32_t)0x00004000) /*  */
+#define OPA_CFGR2_IF_CNT                        ((uint32_t)0x00008000) /*  */
+#define OPA_CFGR2_POLL_VLU                      ((uint32_t)0x01FF0000) /*  */
+#define OPA_CFGR2_POLL_CH1                      ((uint32_t)0x0C000000) /*  */
+#define OPA_CFGR2_POLL_CH1_0                    ((uint32_t)0x02000000) /*  */
+#define OPA_CFGR2_POLL_CH1_1                    ((uint32_t)0x04000000) /*  */
+#define OPA_CFGR2_POLL_CH2                      ((uint32_t)0x18000000) /*  */
+#define OPA_CFGR2_POLL_CH2_0                    ((uint32_t)0x08000000) /*  */
+#define OPA_CFGR2_POLL_CH2_1                    ((uint32_t)0x10000000) /*  */
+#define OPA_CFGR2_POLL_CH3                      ((uint32_t)0xC0000000) /*  */
+#define OPA_CFGR2_POLL_CH3_0                    ((uint32_t)0x20000000) /*  */
+#define OPA_CFGR2_POLL_CH3_1                    ((uint32_t)0x40000000) /*  */
+
+/********************  Bit definition for OPA_CTRL2 register  ********************/
+#define OPA_CTRL2_CMP_EN1                       ((uint32_t)0x00000001) /*  */
+#define OPA_CTRL2_MODE1                         ((uint32_t)0x00000006) /*  */
+#define OPA_CTRL2_MODE1_0                       ((uint32_t)0x00000002) /*  */
+#define OPA_CTRL2_MODE1_1                       ((uint32_t)0x00000004) /*  */
+#define OPA_CTRL2_NSEL1                         ((uint32_t)0x00000018) /*  */
+#define OPA_CTRL2_NSEL1_0                       ((uint32_t)0x00000008) /*  */
+#define OPA_CTRL2_NSEL1_1                       ((uint32_t)0x00000010) /*  */
+#define OPA_CTRL2_NSEL1_CHN0                    ((uint32_t)0x00000000) /*  */
+#define OPA_CTRL2_NSEL1_CHN1                    ((uint32_t)0x00000008) /*  */
+#define OPA_CTRL2_NSEL1_CHN2                    ((uint32_t)0x00000010) /*  */
+#define OPA_CTRL2_PSEL1                         ((uint32_t)0x00000060) /*  */
+#define OPA_CTRL2_PSEL1_0                       ((uint32_t)0x00000020) /*  */
+#define OPA_CTRL2_PSEL1_1                       ((uint32_t)0x00000040) /*  */
+#define OPA_CTRL2_PSEL1_CHP0                    ((uint32_t)0x00000000) /*  */
+#define OPA_CTRL2_PSEL1_CHP1                    ((uint32_t)0x00000020) /*  */
+#define OPA_CTRL2_PSEL1_CHP2                    ((uint32_t)0x00000040) /*  */
+#define OPA_CTRL2_HYEN1                         ((uint32_t)0x00000080) /*  */
+#define OPA_CTRL2_RMID1                         ((uint32_t)0x00000100) /*  */
+#define OPA_CTRL2_CMP_EN2                       ((uint32_t)0x00010000) /*  */
+#define OPA_CTRL2_FILT_EN                       ((uint32_t)0x01000000) /*  */
+#define OPA_CTRL2_FILT_SEL                      ((uint32_t)0x02000000) /*  */
+#define OPA_CTRL2_BKIN_CFG                      ((uint32_t)0x0C000000) /*  */
+#define OPA_CTRL2_BKIN_CFG_0                    ((uint32_t)0x04000000) /*  */
+#define OPA_CTRL2_BKIN_CFG_1                    ((uint32_t)0x08000000) /*  */
+#define OPA_CTRL2_BKIN_CFG_IO                   ((uint32_t)0x00000000) /*  */
+#define OPA_CTRL2_BKIN_CFG_CMP1                 ((uint32_t)0x04000000) /*  */
+#define OPA_CTRL2_BKIN_CFG_CMP2                 ((uint32_t)0x08000000) /*  */
+#define OPA_CTRL2_BKIN_CFG_OPA                  ((uint32_t)0x0C000000) /*  */
+#define OPA_CTRL2_CMP_LOCK                      ((uint32_t)0x80000000) /*  */
+
+/*******************  Bit definition for OPA_KEY register  ********************/
+/*******************  Bit definition for CMP_KEY register  ********************/
+/*******************  Bit definition for POLL_KEY register  *******************/
+#define OPA_KEY1                                ((uint32_t)0x45670123) /*  */
+#define OPA_KEY2                                ((uint32_t)0xCDEF89AB) /*  */
 
 #ifdef __cplusplus
 }
@@ -3680,6 +3822,7 @@ typedef enum
 
 /* GPIO_Port_Sources */
 #define GPIO_PortSourceGPIOA           ((uint8_t)0x00)
+#define GPIO_PortSourceGPIOB           ((uint8_t)0x01)
 #define GPIO_PortSourceGPIOC           ((uint8_t)0x02)
 #define GPIO_PortSourceGPIOD           ((uint8_t)0x03)
 
@@ -4139,13 +4282,15 @@ typedef struct{
 #define RCC_AHBPeriph_SRAM               ((uint32_t)0x00000004)
 
 /* APB2_peripheral */
-#define RCC_APB2Periph_AFIO              ((uint32_t)0x00000001)
+#define RCC_APB2Periph_AFIO              ((uint32_t)0x00000000)
 #define RCC_APB2Periph_GPIOA             ((uint32_t)0x00000004)
+#define RCC_APB2Periph_GPIOB             ((uint32_t)0x00000008)
 #define RCC_APB2Periph_GPIOC             ((uint32_t)0x00000010)
 #define RCC_APB2Periph_GPIOD             ((uint32_t)0x00000020)
 #define RCC_APB2Periph_ADC1              ((uint32_t)0x00000200)
 #define RCC_APB2Periph_TIM1              ((uint32_t)0x00000800)
 #define RCC_APB2Periph_SPI1              ((uint32_t)0x00001000)
+#define RCC_APB2Periph_USART2            ((uint32_t)0x00002000)
 #define RCC_APB2Periph_USART1            ((uint32_t)0x00004000)
 
 /* APB1_peripheral */
@@ -4777,8 +4922,22 @@ Examples:
 #define SysTick         ((SysTick_Type *) SysTick_BASE)
 
 
+#define PA0 0
 #define PA1 1
 #define PA2 2
+#define PA3 3
+#define PA4 4
+#define PA5 5
+#define PA6 6
+#define PA7 7
+#define PB0 16
+#define PB1 17
+#define PB2 18
+#define PB3 19
+#define PB4 20
+#define PB5 21
+#define PB6 22
+// There is not PB7 in V006
 #define PC0 32
 #define PC1 33
 #define PC2 34

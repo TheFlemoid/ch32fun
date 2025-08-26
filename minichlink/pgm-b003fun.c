@@ -4,29 +4,32 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-
+#include "chips.h"
 #include "../ch32fun/ch32fun.h"
 
 //#define DEBUG_B003
 
 #if defined(WINDOWS) || defined(WIN32) || defined(_WIN32)
 void Sleep(uint32_t dwMilliseconds);
-#define usleep( x ) Sleep( x / 1000 );
+#define usleep( x ) Sleep( x / 1000 )
+#define sleep( x ) Sleep( x * 1000 )
 #else
 #include <unistd.h>
 #endif
 
+#define MAX_USB_ERR 10000
+#define TERMINAL_FEATURE_ID 0xFD
 
 struct B003FunProgrammerStruct
 {
 	void * internal; // Part of struct ProgrammerStructBase 
-
 	hid_device * hd;
 	uint8_t commandbuffer[128];
 	uint8_t respbuffer[128];
 	int commandplace;
 	int prepping_for_erase;
 	int no_get_report;
+	int err_count;
 };
 
 static const unsigned char byte_wise_read_blob[] = { // No alignment restrictions.
@@ -63,10 +66,10 @@ static const unsigned char word_wise_write_blob[] = { // size and address must b
 };
 
 static const unsigned char write64_flash[] = { // size and address must be aligned by 4.
-  0x13, 0x07, 0x45, 0x03, 0x0c, 0x43, 0x13, 0x86, 0x05, 0x04, 0x5c, 0x43,
-  0x8c, 0xc7, 0x14, 0x47, 0x94, 0xc1, 0xb7, 0x06, 0x05, 0x00, 0xd4, 0xc3,
-  0x94, 0x41, 0x91, 0x05, 0x11, 0x07, 0xe3, 0xc8, 0xc5, 0xfe, 0xc1, 0x66,
-  0x93, 0x86, 0x06, 0x04, 0xd4, 0xc3, 0xfd, 0x56, 0x14, 0xc1, 0x82, 0x80
+	0x13, 0x07, 0x45, 0x03, 0x0c, 0x43, 0x13, 0x86, 0x05, 0x04, 0x5c, 0x43,
+	0x8c, 0xc7, 0x14, 0x47, 0x94, 0xc1, 0xb7, 0x06, 0x05, 0x00, 0xd4, 0xc3,
+	0x94, 0x41, 0x91, 0x05, 0x11, 0x07, 0xe3, 0xc8, 0xc5, 0xfe, 0xc1, 0x66,
+	0x93, 0x86, 0x06, 0x04, 0xd4, 0xc3, 0xfd, 0x56, 0x14, 0xc1, 0x82, 0x80
 };
 
 static const unsigned char half_wise_write_blob[] = { // size and address must be aligned by 2
@@ -94,13 +97,51 @@ static const unsigned char halt_wait_blob[] = {
 //	0xfd, 0x56, 0x94, 0xc1, 0xfd, 0x56, 0x14, 0xc1, 0x82, 0x80 };
 //
 // Alternatively, we do it ourselves.
-static const unsigned char run_app_blob[] = {
-	0x37, 0x07, 0x67, 0x45, 0xb7, 0x27, 0x02, 0x40, 0x13, 0x07, 0x37, 0x12,
-	0x98, 0xd7, 0x37, 0x97, 0xef, 0xcd, 0x13, 0x07, 0xb7, 0x9a, 0x98, 0xd7,
-	0x23, 0xa6, 0x07, 0x00, 0x13, 0x07, 0x00, 0x08, 0x98, 0xcb, 0xb7, 0xf7,
-	0x00, 0xe0, 0x37, 0x07, 0x00, 0x80, 0x23, 0xa8, 0xe7, 0xd0, 0x82, 0x80,
-};
 
+// Run app blob (old):
+// static const unsigned char run_app_blob[] = {
+// 	0x37, 0x07, 0x67, 0x45, 0xb7, 0x27, 0x02, 0x40, 0x13, 0x07, 0x37, 0x12,
+// 	0x98, 0xd7, 0x37, 0x97, 0xef, 0xcd, 0x13, 0x07, 0xb7, 0x9a, 0x98, 0xd7,
+// 	0x23, 0xa6, 0x07, 0x00, 0x13, 0x07, 0x00, 0x08, 0x98, 0xcb, 0xb7, 0xf7,
+// 	0x00, 0xe0, 0x37, 0x07, 0x00, 0x80, 0x23, 0xa8, 0xe7, 0xd0, 0x82, 0x80,
+// };
+
+// Run app blob (new):
+static const unsigned char run_app_blob[] = {
+	0xb7,0xf5,0xff,0x1f,  // li     a1,0x1FFFF000   - load offset to a1
+	0x93,0x87,0xc5,0x77,  // addi   a5,a1,0x77C     - load absolute address of secret area to a5
+	0x03,0xa7,0x07,0x00,  // lw     a4,0(a5)        - load reboot function offset + xor from secret to a4
+	0x13,0x57,0x07,0x01,  // srli   a4,a4,16        - shift it to remove lower part (offset)
+	0x83,0x96,0x07,0x00,  // lh     a3,0(a5)        - load offset part to a3
+	0x93,0xc7,0xc6,0x77,  // xori   a5,a3,0x77C     - find current xor
+	0x63,0x16,0xf7,0x00,  // bne    a4,a5,.L2       - if xor is valid
+	0x33,0x87,0xb6,0x00,  // add    a4, a3, a1      - make absolute address of reboot function an jump
+	0x67,0x00,0x07,0x00,  // jr     a4              - jump to it
+	/* else - means that we didn't find a reboot function address
+	and need to send the blob to do a reboot
+.L2:                                                - Same sequence as in "Run app blob (old)"*/
+	0xb7,0x27,0x02,0x40,  // li     a5,1073881088
+	0x93,0x87,0x87,0x02,  // addi   a5,a5,40
+	0x37,0x07,0x67,0x45,  // li     a4,1164378112
+	0x13,0x07,0x37,0x12,  // addi   a4,a4,291
+	0x23,0xa0,0xe7,0x00,  // sw     a4,0(a5)
+	0xb7,0x27,0x02,0x40,  // li     a5,1073881088
+	0x93,0x87,0x87,0x02,  // addi   a5,a5,40
+	0x37,0x97,0xef,0xcd,  // li     a4,-839938048
+	0x13,0x07,0xb7,0x9a,  // addi   a4,a4,-1621
+	0x23,0xa0,0xe7,0x00,  // sw     a4,0(a5)
+	0xb7,0x27,0x02,0x40,  // li     a5,1073881088
+	0x93,0x87,0xc7,0x00,  // addi   a5,a5,12
+	0x23,0xa0,0x07,0x00,  // sw     zero,0(a5)
+	0xb7,0x27,0x02,0x40,  // li     a5,1073881088
+	0x93,0x87,0x07,0x01,  // addi   a5,a5,16
+	0x13,0x07,0x00,0x08,  // li     a4,128
+	0x23,0xa0,0xe7,0x00,  // sw     a4,0(a5)
+	0xb7,0xf7,0x00,0xe0,  // li     a5,-536809472
+	0x93,0x87,0x07,0xd1,  // addi   a5,a5,-752
+	0x37,0x07,0x00,0x80,  // li     a4,-2147483648
+	0x23,0xa0,0xe7,0x00,  // sw     a4,0(a5)
+};
 
 static void ResetOp( struct B003FunProgrammerStruct * eps )
 {
@@ -119,7 +160,6 @@ static void WriteOp4( struct B003FunProgrammerStruct * eps, uint32_t opsend )
 	}
 	eps->commandplace = newend;
 }
-
 
 static void WriteOpArb( struct B003FunProgrammerStruct * eps, const uint8_t * data, int len )
 {
@@ -171,7 +211,7 @@ resend:
 			goto resend;
 		}
 	}
-        
+
 	if (eps->no_get_report) return r;
 
 	int timeout = 0;
@@ -226,7 +266,7 @@ static int B003FunWaitForDoneOp( void * dev, int ignore )
 
 // static int B003FunDelayUS( void * dev, int microseconds )
 // {
-// 	usleep( microseconds );
+	// usleep( microseconds );
 // 	return 0;
 // }
 
@@ -404,6 +444,11 @@ static int InternalB003FunBoot( void * dev )
 	printf( "Booting\n" );
 	ResetOp( eps );
 	WriteOpArb( eps, run_app_blob, sizeof(run_app_blob) );
+	// for( int i = 0; i < 128; i++ )
+	// {
+	// 	printf( "%02x ", eps->commandbuffer[i] );
+	// }
+	// printf( "\n" );
 	eps->no_get_report = 1;
 	if( CommitOp( eps ) ) return -5;
 	return 0;
@@ -412,10 +457,33 @@ static int InternalB003FunBoot( void * dev )
 static int B003FunSetupInterface( void * dev )
 {
 	struct B003FunProgrammerStruct * eps = (struct B003FunProgrammerStruct*) dev;
+	struct InternalState * iss = (struct InternalState*)(((struct B003FunProgrammerStruct*)eps)->internal);
+	iss->target_chip = &ch32v003;
+	iss->target_chip_type = CHIP_CH32V003;
+	iss->flash_size = 16;
+	iss->ram_base = iss->target_chip->ram_base;
+	iss->ram_size = iss->target_chip->ram_size;
+	iss->sector_size = iss->target_chip->sector_size;
 	printf( "Halting Boot Countdown\n" );
 	ResetOp( eps );
 	WriteOpArb( eps, halt_wait_blob, sizeof(halt_wait_blob) );
 	if( CommitOp( eps ) ) return -5;
+	
+	uint32_t one;
+	int two;
+	uint8_t read_protection;
+	MCF.ReadWord( dev, 0x4002201c, &one );
+	MCF.ReadWord( dev, 0x40022020, (uint32_t*)&two );
+	
+	if( (one & 2) || two != -1 ) read_protection = 1;
+
+	uint8_t uuid[8];
+	fprintf( stderr, "Detected %s\n", iss->target_chip->name_str );
+	fprintf( stderr, "Flash Storage: %d kB\n", iss->flash_size );
+	if( MCF.GetUUID( dev, uuid ) ) fprintf( stderr, "Couldn't read UUID\n" );
+	else fprintf( stderr, "Part UUID: %02x-%02x-%02x-%02x-%02x-%02x-%02x-%02x\n", uuid[0], uuid[1], uuid[2], uuid[3], uuid[4], uuid[5], uuid[6], uuid[7] );
+	// fprintf( stderr, "Part Type: %02x-%02x-%02x-%02x\n", part_type[3], part_type[2], part_type[1], part_type[0] );
+	fprintf( stderr, "Read protection: %s\n", (read_protection > 0)?"enabled":"disabled" );
 	return 0;
 }
 
@@ -541,14 +609,95 @@ int B003FunPrepForLongOp( void * dev )
 	return 0;
 }
 
-
-void * TryInit_B003Fun()
+int B003PollTerminal( void * dev, uint8_t * buffer, int maxlen, uint32_t leaveflagA, int leaveflagB )
 {
-	#define VID 0x1209
-	#define PID 0xb003
+	struct B003FunProgrammerStruct * eps = (struct B003FunProgrammerStruct *)dev;
+	struct InternalState * iss = (struct InternalState*)(((struct ProgrammerStructBase*)eps)->internal);
+	int r;
+	uint8_t rr;
+	if( iss->statetag != STTAG( "TERM" ) )
+	{
+		iss->statetag = STTAG( "TERM" );
+	}
+
+	if( maxlen < 8 ) return -9;
+
+	eps->respbuffer[0] = TERMINAL_FEATURE_ID;
+	r = hid_get_feature_report( eps->hd, eps->respbuffer, 8 );
+
+	if( (leaveflagA>>8) ) {
+		memset( eps->commandbuffer, 0, 8 );
+		*((uint32_t*)eps->commandbuffer) = leaveflagA;
+		*((uint32_t*)eps->commandbuffer+1) = leaveflagB;
+		eps->commandbuffer[0] = TERMINAL_FEATURE_ID;
+		eps->commandbuffer[1] = (leaveflagA>>8) & 0xFF;
+		r = hid_send_feature_report( eps->hd, eps->commandbuffer, 8 );
+	}
+
+#if MAX_USB_ERR
+	if( r < 0 ) eps->err_count++;
+	else eps->err_count = 0;
+
+	if( eps->err_count > MAX_USB_ERR ) return -8;
+#endif
+
+	rr = eps->respbuffer[0];
+	if( rr == TERMINAL_FEATURE_ID ) return -1;	// USB just ack'ed
+	if( rr & 0x80 )
+	{
+		int num_printf_chars = (rr & 0xf)-4;
+		memcpy( buffer, eps->respbuffer+1, num_printf_chars );
+		*(buffer+num_printf_chars) = 0; //  For ease of mind make the buffer a C-string
+		if( num_printf_chars <= 0 ) return num_printf_chars-1;
+		return num_printf_chars;
+	}
+	else
+	{
+		return -1;
+	}
+}
+
+static int B003FunGetUUID(void * dev, uint8_t * buffer)
+{
+	int ret = 0;
+	uint8_t local_buffer[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+	ret |= MCF.ReadWord( dev, 0x1ffff7e8, (uint32_t*)local_buffer );			
+	ret |= MCF.ReadWord( dev, 0x1ffff7ec, (uint32_t*)(local_buffer + 4) );
+	
+	*((uint32_t*)buffer) = local_buffer[0]<<24|local_buffer[1]<<16|local_buffer[2]<<8|local_buffer[3];
+	*(((uint32_t*)buffer)+1) = local_buffer[4]<<24|local_buffer[5]<<16|local_buffer[6]<<8|local_buffer[7];
+	return ret;
+}
+
+void * TryInit_B003Fun(uint32_t id)
+{
 	hid_init();
-	hid_device * hd = hid_open( VID, PID, 0); // third parameter is "serial"
-	if( !hd ) return 0;
+	fprintf( stderr, "VID:0x%04x, PID:0x%04x\n", id>>16, id&0xFFFF );
+	hid_device * hd = hid_open( id>>16, id&0xFFFF, 0); // third parameter is "serial"
+	if( !hd ) {
+		hd = hid_open(0x1209, 0xd003, 0);	//	Looking for default rv003usb device
+		if (!hd) {
+			return 0;
+		} else {
+			fprintf( stderr, "Trying to reboot into bootloader\n");
+			uint8_t buffer[7] = { 0xfd, 0x12, 0x34, 0xaa, 0xbb, 0xcc, 0xdd };
+			hid_send_feature_report(hd, buffer, sizeof(buffer));	// Sending magic soft reboot command
+			fprintf( stderr, "Sent magic packet\n");
+			memset(buffer, 0, 7);
+			int r2 = hid_get_feature_report(hd, buffer, 7);
+			// I wish we had a better way to know if target understands our magic command
+			if (r2 < 0) {
+				for (int i = 0; i < 5; i++) {
+					hd = hid_open( id>>16, id&0xFFFF, 0);
+					if (hd) break;
+					sleep(1);
+				}
+			}
+			// hd = hid_open( id>>16, id&0xFFFF, 0);
+			if (!hd) return 0;
+		}
+	}
 
 	//extern int g_hidapiSuppress;
 	//g_hidapiSuppress = 1;  // Suppress errors for this device.  (don't do this yet)
@@ -557,7 +706,6 @@ void * TryInit_B003Fun()
 	memset( eps, 0, sizeof( *eps ) );
 	eps->hd = hd;
 	eps->commandplace = 1;
-
 	memset( &MCF, 0, sizeof( MCF ) );
 	MCF.WriteReg32 = 0;
 	MCF.ReadReg32 = 0;
@@ -568,7 +716,7 @@ void * TryInit_B003Fun()
 	MCF.Exit = B003FunExit;
 	MCF.HaltMode = 0;
 	MCF.VoidHighLevelState = 0;
-	MCF.PollTerminal = 0;
+	MCF.PollTerminal = B003PollTerminal;
 
 	// These are optional. Disabling these is a good mechanism to make sure the core functions still work.
 	
@@ -588,6 +736,8 @@ void * TryInit_B003Fun()
 	MCF.PrepForLongOp = B003FunPrepForLongOp;
 
 	MCF.HaltMode = B003FunHaltMode;
+
+	MCF.GetUUID = B003FunGetUUID;
 
 	return eps;
 }
@@ -733,12 +883,22 @@ void * TryInit_B003Fun()
 */
 
 
-/* Run app blob
+/* Run app blob (old)
 				FLASH->BOOT_MODEKEYR = FLASH_KEY1;
 				FLASH->BOOT_MODEKEYR = FLASH_KEY2;
 				FLASH->STATR = 0; // 1<<14 is zero, so, boot user code.
 				FLASH->CTLR = CR_LOCK_Set;
 				PFIC->SCTLR = 1<<31;
+*/
+
+/* Run app blob (new)
+	Explaining the changes:
+	One issue I had is that when not using DPU pin, but constantly pulling D- with a resistor, v003 doesn't reenumerate after minichlink -b.
+	That's when I thought I could add pulling D- low for a few ms before booting user code after minichlink -b.
+	Then I could call that function via blob, instead of sending it whole.
+	Offset to the function address, that could be in different places if we ever update bootloader's code, is stored now at the last 4 bytes of the bootloader region, at 0x77C offset.
+	Also along the offset of the boot_usercode function, at higher part of 0x77C word stored XOR of the offset and 0x77C.
+	This is done so we can have backward compatibility in minichlink after updating to new blob.
 */
 
 
